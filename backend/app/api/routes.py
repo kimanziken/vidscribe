@@ -3,12 +3,16 @@ import json
 import asyncio
 from pathlib import Path
 from functools import partial
+from typing import Iterator
 from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, Query
+from fastapi.responses import StreamingResponse
 import aiofiles
 
 from app.services.ffmpeg_service import extract_audio, UPLOADS_DIR
 from app.services.transcription_service import transcribe_audio
 from app.services.llm.factory import get_llm_provider
+from app.services.rag_service import index_transcript, retrieve_context
+from pydantic import BaseModel
 
 TRANSCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "transcripts"
 
@@ -16,6 +20,10 @@ router = APIRouter()
 
 # In-memory job tracker
 jobs = {}
+
+
+class ChatRequest(BaseModel):
+    question: str
 
 
 async def run_summarization(video_id: str):
@@ -47,6 +55,16 @@ async def run_summarization(video_id: str):
     return summary
 
 
+async def run_summarization_task(video_id: str):
+    """Wrapper for background task so status is reset to done after."""
+    try:
+        await run_summarization(video_id)
+        jobs[video_id]["status"] = "done"
+    except Exception as e:
+        jobs[video_id]["status"] = "failed"
+        jobs[video_id]["error"] = str(e)
+
+
 async def process_video(video_id: str, video_path: Path, filename: str, summarize: bool):
     """Background task that runs the full pipeline."""
     loop = asyncio.get_event_loop()
@@ -62,7 +80,14 @@ async def process_video(video_id: str, video_path: Path, filename: str, summariz
         )
         jobs[video_id]["transcript_path"] = str(transcript_path)
 
-        # Phase 3: Summarize (optional)
+        # Phase 3: Index transcript for RAG
+        jobs[video_id]["status"] = "indexing"
+        chunk_count = await loop.run_in_executor(
+            None, partial(index_transcript, video_id)
+        )
+        jobs[video_id]["chunk_count"] = chunk_count
+
+        # Phase 4: Summarize (optional)
         if summarize:
             jobs[video_id]["status"] = "summarizing"
             await run_summarization(video_id)
@@ -132,15 +157,65 @@ async def summarize_video(video_id: str, background_tasks: BackgroundTasks):
         "message": "Summarization started."
     }
 
+@router.post("/index/{video_id}")
+async def index_video(video_id: str, background_tasks: BackgroundTasks):
+    """Trigger ChromaDB indexing for an already transcribed video."""
+    if video_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
 
-async def run_summarization_task(video_id: str):
-    """Wrapper for background task so status is reset to done after."""
-    try:
-        await run_summarization(video_id)
-        jobs[video_id]["status"] = "done"
-    except Exception as e:
-        jobs[video_id]["status"] = "failed"
-        jobs[video_id]["error"] = str(e)
+    if jobs[video_id]["status"] not in ["done"]:
+        raise HTTPException(status_code=400, detail=f"Video must be fully transcribed first. Current status: {jobs[video_id]['status']}")
+
+    # Check if already indexed
+    if jobs[video_id].get("chunk_count"):
+        raise HTTPException(status_code=400, detail=f"Video already indexed with {jobs[video_id]['chunk_count']} chunks.")
+
+    # Check flat transcript exists
+    flat_path = TRANSCRIPTS_DIR / f"{video_id}.txt"
+    if not flat_path.exists():
+        raise HTTPException(status_code=404, detail="Flat transcript not found. Cannot index without transcription.")
+
+    async def run_indexing(video_id: str):
+        try:
+            loop = asyncio.get_event_loop()
+            jobs[video_id]["status"] = "indexing"
+            chunk_count = await loop.run_in_executor(
+                None, partial(index_transcript, video_id)
+            )
+            jobs[video_id]["chunk_count"] = chunk_count
+            jobs[video_id]["status"] = "done"
+        except Exception as e:
+            jobs[video_id]["status"] = "failed"
+            jobs[video_id]["error"] = str(e)
+
+    background_tasks.add_task(run_indexing, video_id)
+
+    return {
+        "video_id": video_id,
+        "message": "Indexing started."
+    }
+
+@router.post("/chat/{video_id}")
+async def chat_with_video(video_id: str, request: ChatRequest):
+    """Chat with a video using RAG. Streams the response back token by token."""
+    if video_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if jobs[video_id]["status"] != "done":
+        raise HTTPException(status_code=400, detail=f"Video not ready for chat. Current status: {jobs[video_id]['status']}")
+
+    # Retrieve relevant context from ChromaDB
+    context = retrieve_context(video_id, request.question)
+
+    # Get LLM provider
+    llm = get_llm_provider()
+
+    # Stream generator
+    def token_stream() -> Iterator[str]:
+        for token in llm.chat_stream(context, request.question):
+            yield token
+
+    return StreamingResponse(token_stream(), media_type="text/plain")
 
 
 @router.get("/status/{video_id}")

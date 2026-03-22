@@ -1,3 +1,4 @@
+from typing import Iterator
 from openai import OpenAI
 from app.services.llm.base import BaseLLMProvider
 
@@ -71,3 +72,26 @@ class LMStudioProvider(BaseLLMProvider):
             max_tokens=1000
         )
         return response.choices[0].message.content
+
+    def chat_stream(self, context: str, question: str) -> Iterator[str]:
+        stream = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant answering questions about a video transcript."
+                },
+                {
+                    "role": "user",
+                    "content": CHAT_PROMPT.format(context=context, question=question)
+                }
+            ],
+            temperature=0.5,
+            max_tokens=1000,
+            stream=True
+        )
+
+        for chunk in stream:
+            token = chunk.choices[0].delta.content
+            if token is not None:
+                yield token

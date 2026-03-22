@@ -3,11 +3,14 @@ fastapi==0.115.0
 uvicorn[standard]==0.30.6
 python-multipart==0.0.9
 
+# Transcription
+faster-whisper==1.0.3
+
 # LLM
 openai==1.40.0
 
-# Transcription
-faster-whisper==1.0.3
+# Vector Store
+chromadb
 
 # Utilities
 aiofiles==23.2.1
