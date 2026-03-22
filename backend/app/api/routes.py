@@ -242,6 +242,7 @@ async def chat_with_video(video_id: str, request: ChatRequest):
     def token_stream() -> Iterator[str]:
         for token in llm.chat_stream(context, request.question):
             yield token
+        yield "\n"
 
     return StreamingResponse(token_stream(), media_type="text/plain")
 
