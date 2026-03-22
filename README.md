@@ -48,6 +48,8 @@ Set your provider details in `backend/.env`:
 LLM_PROVIDER=lmstudio
 LMSTUDIO_BASE_URL=http://127.0.0.1:1234/v1
 LMSTUDIO_MODEL=your-model-name
+LLM_CONTEXT_WINDOW=
+SUMMARY_CHUNK_WORDS=
 ```
 
 ## Frontend

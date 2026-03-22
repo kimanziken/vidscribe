@@ -12,6 +12,7 @@ class BaseLLMProvider(ABC):
     def summarize(self, transcript_text: str) -> str:
         """
         Takes a plain text transcript and returns a summary string.
+        Handles chunking internally if transcript exceeds context window.
         """
         pass
 

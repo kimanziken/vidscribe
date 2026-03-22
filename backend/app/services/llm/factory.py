@@ -16,7 +16,9 @@ def get_llm_provider() -> BaseLLMProvider:
     if provider == "lmstudio":
         return LMStudioProvider(
             base_url=os.getenv("LMSTUDIO_BASE_URL", "http://127.0.0.1:1234/v1"),
-            model=os.getenv("LMSTUDIO_MODEL", "qwen2.5-coder-1.5b-instruct")
+            model=os.getenv("LMSTUDIO_MODEL", "qwen2.5-coder-1.5b-instruct"),
+            context_window=int(os.getenv("LLM_CONTEXT_WINDOW", "4096")),
+            summary_chunk_words=int(os.getenv("SUMMARY_CHUNK_WORDS", "600"))
         )
 
     # Future providers:
