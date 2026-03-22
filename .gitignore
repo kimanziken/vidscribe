@@ -34,3 +34,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Local Store
+backend/data/jobs.json
+backend/data/chroma

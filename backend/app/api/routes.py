@@ -21,6 +21,26 @@ router = APIRouter()
 # In-memory job tracker
 jobs = {}
 
+JOBS_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "jobs.json"
+
+
+def load_jobs():
+    """Load jobs from disk into memory on startup."""
+    global jobs
+    if JOBS_FILE.exists():
+        with open(JOBS_FILE, "r", encoding="utf-8") as f:
+            jobs = json.load(f)
+
+
+def save_jobs():
+    """Persist current jobs dict to disk."""
+    with open(JOBS_FILE, "w", encoding="utf-8") as f:
+        json.dump(jobs, f, indent=2, ensure_ascii=False)
+
+
+# Load jobs on module import
+load_jobs()
+
 
 class ChatRequest(BaseModel):
     question: str
@@ -52,52 +72,56 @@ async def run_summarization(video_id: str):
         json.dump(summary, f, indent=2, ensure_ascii=False)
 
     jobs[video_id]["summary_path"] = str(summary_path)
+    save_jobs()
     return summary
 
 
 async def run_summarization_task(video_id: str):
-    """Wrapper for background task so status is reset to done after."""
     try:
         await run_summarization(video_id)
         jobs[video_id]["status"] = "done"
+        save_jobs()
     except Exception as e:
         jobs[video_id]["status"] = "failed"
         jobs[video_id]["error"] = str(e)
+        save_jobs()
 
 
 async def process_video(video_id: str, video_path: Path, filename: str, summarize: bool):
-    """Background task that runs the full pipeline."""
     loop = asyncio.get_event_loop()
     try:
-        # Phase 1: Extract audio
         jobs[video_id]["status"] = "extracting_audio"
+        save_jobs()
         audio_path = await extract_audio(video_id, video_path)
 
-        # Phase 2: Transcribe
         jobs[video_id]["status"] = "transcribing"
+        save_jobs()
         transcript_path = await loop.run_in_executor(
             None, partial(transcribe_audio, video_id, audio_path, filename)
         )
         jobs[video_id]["transcript_path"] = str(transcript_path)
+        save_jobs()
 
-        # Phase 3: Index transcript for RAG
         jobs[video_id]["status"] = "indexing"
+        save_jobs()
         chunk_count = await loop.run_in_executor(
             None, partial(index_transcript, video_id)
         )
         jobs[video_id]["chunk_count"] = chunk_count
+        save_jobs()
 
-        # Phase 4: Summarize (optional)
         if summarize:
             jobs[video_id]["status"] = "summarizing"
+            save_jobs()
             await run_summarization(video_id)
 
         jobs[video_id]["status"] = "done"
+        save_jobs()
 
     except Exception as e:
         jobs[video_id]["status"] = "failed"
         jobs[video_id]["error"] = str(e)
-
+        save_jobs()
 
 @router.post("/upload")
 async def upload_video(
@@ -124,6 +148,7 @@ async def upload_video(
         "status": "uploaded",
         "summarize_requested": summarize
     }
+    save_jobs()
 
     background_tasks.add_task(process_video, video_id, video_path, file.filename, summarize)
 
@@ -179,14 +204,17 @@ async def index_video(video_id: str, background_tasks: BackgroundTasks):
         try:
             loop = asyncio.get_event_loop()
             jobs[video_id]["status"] = "indexing"
+            save_jobs()
             chunk_count = await loop.run_in_executor(
                 None, partial(index_transcript, video_id)
             )
             jobs[video_id]["chunk_count"] = chunk_count
             jobs[video_id]["status"] = "done"
+            save_jobs()
         except Exception as e:
             jobs[video_id]["status"] = "failed"
             jobs[video_id]["error"] = str(e)
+            save_jobs()
 
     background_tasks.add_task(run_indexing, video_id)
 
