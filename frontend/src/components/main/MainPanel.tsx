@@ -23,26 +23,17 @@ export function MainPanel({ videoId, currentTime, onTimeUpdate }: MainPanelProps
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      {/* Video player — fixed height */}
-      <div className="flex-shrink-0">
-        <VideoPlayer
-          videoId={videoId}
-          onTimeUpdate={onTimeUpdate}
-          seekTo={seekTo}
-        />
-      </div>
-
-      {/* Summary — fixed height */}
-      <div className="flex-shrink-0">
+    <div className="flex flex-col h-full overflow-hidden">
+      <VideoPlayer
+        videoId={videoId}
+        onTimeUpdate={onTimeUpdate}
+        seekTo={seekTo}
+      />
+      <div className="flex flex-col flex-1 overflow-hidden">
         <SummarySection
           videoId={videoId}
           jobStatus={job?.status}
         />
-      </div>
-
-      {/* Transcript — takes remaining space and scrolls */}
-      <div className="flex-1 min-h-0 overflow-hidden">
         <TranscriptViewer
           videoId={videoId}
           jobStatus={job?.status}
