@@ -5,7 +5,7 @@ from pathlib import Path
 from functools import partial
 from typing import Iterator
 from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 import aiofiles
 
 from app.services.ffmpeg_service import extract_audio, UPLOADS_DIR
@@ -284,3 +284,26 @@ async def get_summary(video_id: str):
 
     with open(summary_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+@router.get("/video/{video_id}")
+async def stream_video(video_id: str):
+    """Serve the original video file for playback."""
+    if video_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Find the video file in uploads
+    matches = list(UPLOADS_DIR.glob(f"{video_id}_*"))
+    if not matches:
+        raise HTTPException(status_code=404, detail="Video file not found")
+
+    video_path = matches[0]
+    return FileResponse(
+        path=str(video_path),
+        media_type="video/mp4",
+        headers={"Accept-Ranges": "bytes"}
+    )
+
+@router.get("/jobs")
+async def get_all_jobs():
+    """Return all jobs."""
+    return list(jobs.values())

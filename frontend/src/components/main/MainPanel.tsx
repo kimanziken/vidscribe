@@ -1,0 +1,55 @@
+import { useState } from 'react'
+import { VideoPlayer } from './VideoPlayer'
+import { SummarySection } from './SummarySection'
+import { TranscriptViewer } from './TranscriptViewer'
+import { useJobStatus } from '@/hooks/useVideos'
+
+interface MainPanelProps {
+  videoId: string | null
+  currentTime: number
+  onTimeUpdate: (time: number) => void
+}
+
+export function MainPanel({ videoId, currentTime, onTimeUpdate }: MainPanelProps) {
+  const [seekTo, setSeekTo] = useState<number | undefined>()
+  const { data: job } = useJobStatus(videoId)
+
+  if (!videoId) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-muted-foreground text-sm">Select a video to get started.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      {/* Video player — fixed height */}
+      <div className="flex-shrink-0">
+        <VideoPlayer
+          videoId={videoId}
+          onTimeUpdate={onTimeUpdate}
+          seekTo={seekTo}
+        />
+      </div>
+
+      {/* Summary — fixed height */}
+      <div className="flex-shrink-0">
+        <SummarySection
+          videoId={videoId}
+          jobStatus={job?.status}
+        />
+      </div>
+
+      {/* Transcript — takes remaining space and scrolls */}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <TranscriptViewer
+          videoId={videoId}
+          jobStatus={job?.status}
+          currentTime={currentTime}
+          onSegmentClick={(start) => setSeekTo(start)}
+        />
+      </div>
+    </div>
+  )
+}
