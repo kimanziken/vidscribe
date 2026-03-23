@@ -12,9 +12,10 @@ import type { JobStatus } from '@/types'
 interface SummarySectionProps {
   videoId: string
   jobStatus?: JobStatus
+  isProcessing: boolean
 }
 
-export function SummarySection({ videoId, jobStatus }: SummarySectionProps) {
+export function SummarySection({ videoId, jobStatus, isProcessing }: SummarySectionProps) {
   const [open, setOpen] = useState(false)
   const { data: summary, isLoading, refetch } = useSummary(videoId, jobStatus)
   const { mutate: triggerSummarize, isPending } = useTriggerSummarize()
@@ -35,7 +36,7 @@ export function SummarySection({ videoId, jobStatus }: SummarySectionProps) {
       <div className="flex items-center justify-between px-4 py-2 border-b">
         <h3 className="text-sm font-semibold">Summary</h3>
         <div className="flex items-center gap-2">
-          {!summary && !isSummarizing && !isLoading && (
+          {!summary && !isSummarizing && !isLoading && !isProcessing && (
             <Button
               size="sm"
               variant="outline"
@@ -48,6 +49,11 @@ export function SummarySection({ videoId, jobStatus }: SummarySectionProps) {
           {isSummarizing && (
             <span className="text-xs text-muted-foreground animate-pulse">
               Generating...
+            </span>
+          )}
+          {isProcessing && (
+            <span className="text-xs text-muted-foreground">
+              Available after processing
             </span>
           )}
           {summary && (
